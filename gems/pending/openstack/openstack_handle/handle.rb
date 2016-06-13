@@ -66,13 +66,24 @@ module OpenstackHandle
       # throw an error trying to build an connection error message.
       opts[:openstack_service_type] = ["object-store"] if service == "Storage"
 
-      if service == "Planning"
-        # Special behaviour for Planning service Tuskar, since it is OpenStack specific service, there is no
-        # Fog::Planning module, only Fog::OpenStack::Planning
-        Fog::Openstack.const_get(service).new(opts)
-      else
-        Fog.const_get(service).new(opts)
+      begin
+        if service == "Planning"
+          # Special behaviour for Planning service Tuskar, since it is OpenStack specific service, there is no
+          # Fog::Planning module, only Fog::OpenStack::Planning
+          Fog::Openstack.const_get(service).new(opts)
+        else
+          Fog.const_get(service).new(opts)
+        end
+      rescue Fog::Errors::NotFound => err
+        raise err unless err.message.include?("region")
+        opts[:openstack_region] = "regionOne"
+        if service == "Planning"
+          Fog::Openstack.const_get(service).new(opts)
+        else
+          Fog.const_get(service).new(opts)
+        end
       end
+
     rescue Fog::Errors::NotFound => err
       raise MiqException::ServiceNotAvailable if err.message.include?("Could not find service")
       raise
@@ -155,7 +166,7 @@ module OpenstackHandle
         # For identity ,there is only domain scope, with project_name nil
         opts[:openstack_project_name] = @project_name = tenant
       end
-      
+
       opts[:openstack_domain_id] = domain
 
       svc_cache = (@connection_cache[service] ||= {})
